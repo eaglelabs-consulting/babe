@@ -3,3 +3,4 @@ ds-test/=lib/suave-std/lib/forge-std/lib/ds-test/src/
 forge-std/=lib/forge-std/src/
 solady/=lib/suave-std/lib/solady/
 suave-std/=lib/suave-std/src/
+solady-pkg/=lib/solady/src

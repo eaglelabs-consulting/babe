@@ -51,16 +51,10 @@ $ anvil
 $ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
 ```
 
-### Cast
+## How To
+
+### Deploy SuaveCaller.sol
 
 ```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
+$ forge create --rpc-url <your_rpc_url> --private-key <your_private_key> src/SuaveCaller.sol:SuaveCaller
 ```
