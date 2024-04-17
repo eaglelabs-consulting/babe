@@ -17,7 +17,7 @@ contract BaseEventFetcher {
     string private basescanApiKey;
 
     event BaseBlockNumber(string b);
-    
+
     constructor(string memory _basescanApiKey) {
         basescanApiKey = _basescanApiKey;
     }
@@ -40,15 +40,20 @@ contract BaseEventFetcher {
         Suave.HttpRequest memory baseBlockNumberRequest;
         baseBlockNumberRequest.url = string.concat(
             URL,
-            "?module=", moduleParam,
-            "&action=", actionParam,
-            "&timestamp=", timestampParam,
-            "&closest=", closestParam,
-            "&apikey=", basescanApiKey
+            "?module=",
+            moduleParam,
+            "&action=",
+            actionParam,
+            "&timestamp=",
+            timestampParam,
+            "&closest=",
+            closestParam,
+            "&apikey=",
+            basescanApiKey
         );
         baseBlockNumberRequest.method = "GET";
         baseBlockNumberRequest.withFlashbotsSignature = false;
-        
+
         bytes memory output = Suave.doHTTPRequest(baseBlockNumberRequest);
 
         // decode responses
@@ -56,7 +61,10 @@ contract BaseEventFetcher {
         return _trimQuotes(item.at('"result"').value());
     }
 
-    function _getBaseEvents(address _suaveCaller, string memory _fromBlock) internal returns (string[] memory, uint256) {
+    function _getBaseEvents(address _suaveCaller, string memory _fromBlock)
+        internal
+        returns (string[] memory, uint256)
+    {
         // get events
 
         // ?module=logs
@@ -74,12 +82,18 @@ contract BaseEventFetcher {
         eventsRequest.method = "GET";
         eventsRequest.url = string.concat(
             URL,
-            "?module=", moduleParam,
-            "&action=", actionParam,
-            "&fromBlock=", _fromBlock,
-            "&toBlock=", toBlockParam,
-            "&address=", addressParam,
-            "&apikey=", basescanApiKey
+            "?module=",
+            moduleParam,
+            "&action=",
+            actionParam,
+            "&fromBlock=",
+            _fromBlock,
+            "&toBlock=",
+            toBlockParam,
+            "&address=",
+            addressParam,
+            "&apikey=",
+            basescanApiKey
         );
         eventsRequest.withFlashbotsSignature = false;
 
@@ -90,7 +104,7 @@ contract BaseEventFetcher {
         uint256 jobsCounter = item.at('"result"').size();
         string[] memory jobs = new string[](jobsCounter);
 
-        for(uint i; i < jobsCounter; i++) {
+        for (uint256 i; i < jobsCounter; i++) {
             jobs[i] = _trimQuotes(item.at('"result"').at(i).at('"topics"').at(1).value());
         }
 

@@ -8,7 +8,7 @@ contract DeploySuaveCaller is Script {
     function setUp() public {}
 
     function run() public {
-        uint256 deployerPrivateKey = vm.envUint("WALLET_PK");   
+        uint256 deployerPrivateKey = vm.envUint("WALLET_PK");
         vm.startBroadcast(deployerPrivateKey);
 
         SuaveCaller suaveCaller = new SuaveCaller();
