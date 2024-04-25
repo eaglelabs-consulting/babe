@@ -52,15 +52,15 @@ contract Babe is Suapp, SubnetRegistry {
         string memory rpcEndoint =
             abi.decode(Suave.confidentialRetrieve(rpcEndpointRecord[_chainId], RPC_NAMESPACE), (string));
 
-        BabeJob[] memory jobs = _getBabeJobs(rpcEndoint);
-        bytes[] memory jobsResults = new bytes[](jobs.length);
+        // BabeJob[] memory jobs = _getBabeJobs(rpcEndoint);
+        // bytes[] memory jobsResults = new bytes[](jobs.length);
 
-        for (uint256 i; i < jobs.length; i++) {
-            emit SubId(jobs[i].subnetId);
-            emit SubData(jobs[i].subnetData);
+        // for (uint256 i; i < jobs.length; i++) {
+        //     emit SubId(jobs[i].subnetId);
+        //     emit SubData(jobs[i].subnetData);
 
-            jobsResults[i] = subnetAddr_[jobs[i].subnetId].execute(jobs[i].subnetData);
-        }
+        //     // jobsResults[i] = subnetAddr_[jobs[i].subnetId].execute(jobs[i].subnetData);
+        // }
 
         return abi.encodeWithSelector(this.postJobResult.selector, _getLatestBlockNumber(rpcEndoint));
     }
