@@ -2,7 +2,7 @@
 pragma solidity ^0.8.13;
 
 // interfaces
-import {ISubnet} from "./interface/ISubnet.sol";
+import {ISubnet} from "../interface/ISubnet.sol";
 // contracts
 import {Suapp} from "suave-std/Suapp.sol";
 

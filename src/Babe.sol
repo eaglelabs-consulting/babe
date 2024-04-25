@@ -3,19 +3,22 @@ pragma solidity ^0.8.13;
 
 // contracts
 import {Suapp} from "suave-std/Suapp.sol";
-import {ChatGPT} from "suave-std/protocols/ChatGPT.sol";
-import {EthJsonRPC, JSONParserLib, HexStrings} from "suave-std/protocols/EthJsonRPC.sol";
-import {BaseEventFetcher} from "./BaseEventFetcher.sol";
+import {HexStrings} from "suave-std/utils/HexStrings.sol";
 import {LibString} from "solady-pkg/utils/LibString.sol";
-
+import {JSONParserLib} from "solady-pkg/utils/JSONParserLib.sol";
 import {SubnetRegistry} from "./SubnetRegistry.sol";
+// libs
+import {Suave} from "suave-std/suavelib/Suave.sol";
+import {Context} from "suave-std/Context.sol";
 
-contract Babe is Suapp, EthJsonRPC, SubnetRegistry {
+contract Babe is Suapp, SubnetRegistry {
     using JSONParserLib for *;
 
-    string private constant _basescanApiKey = "EKSH4E6V9GG3KZVINDJRE66RRDN56YHW4V";
-    string private constant _endpoint = "https://base-sepolia.g.alchemy.com/v2/uLZ1b44XjfcON0eacWHzK3arrhfJjHid";
+    string internal constant RPC_NAMESPACE = "rpc:v0:secret";
+
     address private constant _suaveCallerOnBase = 0x89EAA8f4fcf1a6b986E5B2beDb40b01Ab9Ce395a;
+
+    mapping(uint256 => Suave.DataId) internal rpcEndpointRecord;
 
     uint256 public lastMonitoredBlock = 8893087;
 
@@ -24,14 +27,49 @@ contract Babe is Suapp, EthJsonRPC, SubnetRegistry {
     event SubId(uint256 id);
     event SubData(bytes d);
 
-    constructor() EthJsonRPC(_endpoint) {}
-
     struct BabeJob {
         uint256 subnetId;
         bytes subnetData;
     }
 
-    function _getBabeJobs() internal returns (BabeJob[] memory) {
+    function registerEndpointOffchain(uint256 _chainId) external returns (bytes memory) {
+        bytes memory keyData = Context.confidentialInputs();
+
+        address[] memory peekers = new address[](1);
+        peekers[0] = address(this);
+
+        Suave.DataRecord memory record = Suave.newDataRecord(0, peekers, peekers, RPC_NAMESPACE);
+        Suave.confidentialStore(record.id, RPC_NAMESPACE, keyData);
+
+        return abi.encodeWithSelector(this.updateEndpointOffchain.selector, _chainId, record.id);
+    }
+
+    function updateEndpointOffchain(uint256 _chainId, Suave.DataId _rpcEndpointRecord) external {
+        rpcEndpointRecord[_chainId] = _rpcEndpointRecord;
+    }
+
+    function monitorBabeCalls(uint256 _chainId) external returns (bytes memory) {
+        string memory rpcEndoint =
+            abi.decode(Suave.confidentialRetrieve(rpcEndpointRecord[_chainId], RPC_NAMESPACE), (string));
+
+        BabeJob[] memory jobs = _getBabeJobs(rpcEndoint);
+        bytes[] memory jobsResults = new bytes[](jobs.length);
+
+        for (uint256 i; i < jobs.length; i++) {
+            emit SubId(jobs[i].subnetId);
+            emit SubData(jobs[i].subnetData);
+
+            jobsResults[i] = subnetAddr_[jobs[i].subnetId].execute(jobs[i].subnetData);
+        }
+
+        return abi.encodeWithSelector(this.postJobResult.selector, _getLatestBlockNumber(rpcEndoint));
+    }
+
+    function postJobResult(uint256 _currentBaseBlockNum) external emitOffchainLogs {
+        emit BlockN(_currentBaseBlockNum);
+    }
+
+    function _getBabeJobs(string memory _rpcEndpoint) internal returns (BabeJob[] memory) {
         string memory blockInHex = LibString.toMinimalHexString(lastMonitoredBlock);
         string memory body = string.concat("{");
         body = string.concat(body, '"id": "1", ');
@@ -46,7 +84,7 @@ contract Babe is Suapp, EthJsonRPC, SubnetRegistry {
         body = string.concat(body, "}]");
         body = string.concat(body, "}");
 
-        JSONParserLib.Item memory result = doRequest(body);
+        JSONParserLib.Item memory result = _doRequest(_rpcEndpoint, body);
         uint256 jobsCounter = result.size();
         BabeJob[] memory jobs = new BabeJob[](jobsCounter);
 
@@ -61,28 +99,24 @@ contract Babe is Suapp, EthJsonRPC, SubnetRegistry {
         return jobs;
     }
 
-    function monitorBabeCalls() external returns (bytes memory) {
-        BabeJob[] memory jobs = _getBabeJobs();
-        bytes[] memory jobsResults = new bytes[](jobs.length);
+    function _doRequest(string memory _endpoint, string memory body) internal returns (JSONParserLib.Item memory) {
+        Suave.HttpRequest memory request;
+        request.method = "POST";
+        request.url = _endpoint;
+        request.headers = new string[](1);
+        request.headers[0] = "Content-Type: application/json";
+        request.body = bytes(body);
 
-        for (uint256 i; i < jobs.length; i++) {
-            emit SubId(jobs[i].subnetId);
-            emit SubData(jobs[i].subnetData);
+        bytes memory output = Suave.doHTTPRequest(request);
 
-            jobsResults[i] = subnetAddr_[jobs[i].subnetId].execute(jobs[i].subnetData);
-        }
-
-        return abi.encodeWithSelector(this.postJobResult.selector, _getLatestBlockNumber());
+        JSONParserLib.Item memory item = string(output).parse();
+        return item.at('"result"');
     }
 
-    function postJobResult(uint256 _currentBaseBlockNum) external emitOffchainLogs {
-        emit BlockN(_currentBaseBlockNum);
-    }
-
-    function _getLatestBlockNumber() private returns (uint256) {
+    function _getLatestBlockNumber(string memory _rpcEndpoint) private returns (uint256) {
         string memory body = string.concat('{"id": "1", "method":"eth_blockNumber", "jsonrpc":"2.0"}');
 
-        JSONParserLib.Item memory result = doRequest(body);
+        JSONParserLib.Item memory result = _doRequest(_rpcEndpoint, body);
 
         return JSONParserLib.parseUintFromHex(_stripQuotesAndPrefix(result.value()));
     }
@@ -99,6 +133,15 @@ contract Babe is Suapp, EthJsonRPC, SubnetRegistry {
             result[i - 1] = inputBytes[i];
         }
 
+        return string(result);
+    }
+
+    function _stripQuotesAndPrefix(string memory s) private pure returns (string memory) {
+        bytes memory strBytes = bytes(s);
+        bytes memory result = new bytes(strBytes.length - 4);
+        for (uint256 i = 3; i < strBytes.length - 1; i++) {
+            result[i - 3] = strBytes[i];
+        }
         return string(result);
     }
 }

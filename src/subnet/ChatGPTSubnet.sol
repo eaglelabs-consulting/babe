@@ -6,6 +6,8 @@ import {Subnet} from "./Subnet.sol";
 import {Context} from "suave-std/Context.sol";
 import {ChatGPT} from "suave-std/protocols/ChatGPT.sol";
 import {Suapp} from "suave-std/Suapp.sol";
+// libs
+import {Suave} from "suave-std/suavelib/Suave.sol";
 
 // import {EthJsonRPC, JSONParserLib, HexStrings} from "suave-std/protocols/EthJsonRPC.sol";
 // import {LibString} from "solady-pkg/utils/LibString.sol";
