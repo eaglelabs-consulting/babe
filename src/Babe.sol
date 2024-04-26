@@ -18,7 +18,8 @@ contract Babe is Suapp, SubnetRegistry {
 
     address private constant _suaveCallerOnBase = 0x89EAA8f4fcf1a6b986E5B2beDb40b01Ab9Ce395a;
 
-    mapping(uint256 => Suave.DataId) internal rpcEndpointRecord;
+    // mapping(uint256 => Suave.DataId) internal rpcEndpointRecord;
+    Suave.DataId internal rpcEndpointRecord;
 
     uint256 public lastMonitoredBlock = 8893087;
 
@@ -32,9 +33,11 @@ contract Babe is Suapp, SubnetRegistry {
         bytes subnetData;
     }
 
+    event kd(bytes kd);
+    event kds(string s);
+
     function registerEndpointOffchain(uint256 _chainId) external returns (bytes memory) {
         bytes memory keyData = Context.confidentialInputs();
-
         address[] memory peekers = new address[](1);
         peekers[0] = address(this);
 
@@ -44,25 +47,37 @@ contract Babe is Suapp, SubnetRegistry {
         return abi.encodeWithSelector(this.updateEndpointOffchain.selector, _chainId, record.id);
     }
 
-    function updateEndpointOffchain(uint256 _chainId, Suave.DataId _rpcEndpointRecord) external {
-        rpcEndpointRecord[_chainId] = _rpcEndpointRecord;
+    function updateEndpointOffchain(uint256 _chainId, Suave.DataId _rpcEndpointRecord) external emitOffchainLogs {
+        // rpcEndpointRecord[_chainId] = _rpcEndpointRecord;
+        rpcEndpointRecord = _rpcEndpointRecord;
     }
 
     function monitorBabeCalls(uint256 _chainId) external returns (bytes memory) {
-        string memory rpcEndoint =
-            abi.decode(Suave.confidentialRetrieve(rpcEndpointRecord[_chainId], RPC_NAMESPACE), (string));
+        string memory rpcEndoint = bytesToString(Suave.confidentialRetrieve(rpcEndpointRecord, RPC_NAMESPACE));
+        emit kds(rpcEndoint);
 
-        // BabeJob[] memory jobs = _getBabeJobs(rpcEndoint);
-        // bytes[] memory jobsResults = new bytes[](jobs.length);
+        BabeJob[] memory jobs = _getBabeJobs(rpcEndoint);
+        bytes[] memory jobsResults = new bytes[](jobs.length);
 
-        // for (uint256 i; i < jobs.length; i++) {
-        //     emit SubId(jobs[i].subnetId);
-        //     emit SubData(jobs[i].subnetData);
+        for (uint256 i; i < jobs.length; i++) {
+            emit SubId(jobs[i].subnetId);
+            emit SubData(jobs[i].subnetData);
 
-        //     // jobsResults[i] = subnetAddr_[jobs[i].subnetId].execute(jobs[i].subnetData);
-        // }
+            // jobsResults[i] = subnetAddr_[jobs[i].subnetId].execute(jobs[i].subnetData);
+        }
 
         return abi.encodeWithSelector(this.postJobResult.selector, _getLatestBlockNumber(rpcEndoint));
+    }
+
+    function bytesToString(bytes memory data) internal pure returns (string memory) {
+        uint256 length = data.length;
+        bytes memory chars = new bytes(length);
+
+        for(uint i = 0; i < length; i++) {
+            chars[i] = data[i];
+        }
+
+        return string(chars);
     }
 
     function postJobResult(uint256 _currentBaseBlockNum) external emitOffchainLogs {
