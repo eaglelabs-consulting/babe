@@ -13,8 +13,9 @@ import {Suave} from "suave-std/suavelib/Suave.sol";
 // import {LibString} from "solady-pkg/utils/LibString.sol";
 
 contract ChatGPTSubnet is Suapp, Subnet {
+    string internal constant API_KEY_NAMESPACE = "api_key:v0:secret";
+
     Suave.DataId apiKeyRecord;
-    string public chatGptKey = "API_KEY";
 
     event ChatgptPrompt(uint256 role, string content);
     event Response(string messages);
@@ -29,14 +30,14 @@ contract ChatGPTSubnet is Suapp, Subnet {
         address[] memory peekers = new address[](1);
         peekers[0] = address(this);
 
-        Suave.DataRecord memory record = Suave.newDataRecord(0, peekers, peekers, "api_key");
-        Suave.confidentialStore(record.id, chatGptKey, keyData);
+        Suave.DataRecord memory record = Suave.newDataRecord(0, peekers, peekers, API_KEY_NAMESPACE);
+        Suave.confidentialStore(record.id, API_KEY_NAMESPACE, keyData);
 
         return abi.encodeWithSelector(this.updateKeyOnchain.selector, record.id);
     }
 
     function execute(bytes calldata _subnetData) external override returns (bytes memory) {
-        bytes memory keyData = Suave.confidentialRetrieve(apiKeyRecord, chatGptKey);
+        bytes memory keyData = Suave.confidentialRetrieve(apiKeyRecord, API_KEY_NAMESPACE);
         string memory apiKey = bytesToString(keyData);
         ChatGPT chatgpt = new ChatGPT(apiKey);
 
@@ -45,7 +46,7 @@ contract ChatGPTSubnet is Suapp, Subnet {
         emit ChatgptPrompt(role, con);
 
         ChatGPT.Message[] memory messages = new ChatGPT.Message[](1);
-        messages[0] = ChatGPT.Message(ChatGPT.Role.User, "Say hello world");
+        messages[0] = role == 0 ? ChatGPT.Message(ChatGPT.Role.User, con) : ChatGPT.Message(ChatGPT.Role.System, con);
 
         string memory data = chatgpt.complete(messages);
 

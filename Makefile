@@ -14,3 +14,5 @@ register-base-rpc-endpoint:
 	suave-geth spell conf-request --confidential-input ${RPC_BASE_SEPOLIA} ${BABE} 'registerEndpointOffchain(uint256)' '(${CHAIN_ID_BASE_SEPOLIA})'
 monitor-base-sepolia:
 	suave-geth spell conf-request ${BABE} 'monitorBabeCalls(uint256)' '(${CHAIN_ID_BASE_SEPOLIA})'
+add-chatgpt-subnet:
+	suave-geth spell conf-request ${BABE} 'setSubnetAddr(uint256,address)' '(0, ${CHAT_GPT_SUBNET_ADDR})'
