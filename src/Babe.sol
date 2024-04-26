@@ -10,14 +10,17 @@ import {SubnetRegistry} from "./SubnetRegistry.sol";
 // libs
 import {Suave} from "suave-std/suavelib/Suave.sol";
 import {Context} from "suave-std/Context.sol";
+import {Transactions} from "suave-std/Transactions.sol";
 
 contract Babe is Suapp, SubnetRegistry {
     using JSONParserLib for *;
 
+    string internal constant SIGNING_KEY_NAMESPACE = "signing_key:v0:secret";
     string internal constant RPC_NAMESPACE = "rpc:v0:secret";
 
     address private constant _suaveCallerOnBase = 0x89EAA8f4fcf1a6b986E5B2beDb40b01Ab9Ce395a;
 
+    Suave.DataId internal signingKeyRecord;
     mapping(uint256 => Suave.DataId) internal rpcEndpointRecord;
 
     uint256 public lastMonitoredBlock = 8893087;
@@ -26,11 +29,7 @@ contract Babe is Suapp, SubnetRegistry {
     event BlockN(uint256 indexed n);
     event SubId(uint256 id);
     event SubData(bytes d);
-
-    struct BabeJob {
-        uint256 subnetId;
-        bytes subnetData;
-    }
+    event Result(string s);
 
     event kd(bytes kd);
     event kds(string s);
@@ -46,25 +45,67 @@ contract Babe is Suapp, SubnetRegistry {
         return abi.encodeWithSelector(this.updateEndpointOffchain.selector, _chainId, record.id);
     }
 
-    function updateEndpointOffchain(uint256 _chainId, Suave.DataId _rpcEndpointRecord) external emitOffchainLogs {
+    function updateEndpointOffchain(uint256 _chainId, Suave.DataId _rpcEndpointRecord) external {
         rpcEndpointRecord[_chainId] = _rpcEndpointRecord;
+    }
+
+    function registerSigningKey() external returns (bytes memory) {
+        bytes memory keyData = Context.confidentialInputs();
+        address[] memory peekers = new address[](1);
+        peekers[0] = address(this);
+
+        Suave.DataRecord memory record = Suave.newDataRecord(0, peekers, peekers, SIGNING_KEY_NAMESPACE);
+        Suave.confidentialStore(record.id, SIGNING_KEY_NAMESPACE, keyData);
+
+        return abi.encodeWithSelector(this.updateSigningKey.selector, record.id);
+    }
+
+    function updateSigningKey(Suave.DataId _signingKeyRecord) external {
+        signingKeyRecord = _signingKeyRecord;
     }
 
     function monitorBabeCalls(uint256 _chainId) external returns (bytes memory) {
         string memory rpcEndoint = bytesToString(Suave.confidentialRetrieve(rpcEndpointRecord[_chainId], RPC_NAMESPACE));
         emit kds(rpcEndoint);
 
-        BabeJob[] memory jobs = _getBabeJobs(rpcEndoint);
-        bytes[] memory jobsResults = new bytes[](jobs.length);
+        uint256[] memory subnetIds;
+        bytes[] memory subnetDatas;
+        (subnetIds, subnetDatas) = _getBabeJobs(rpcEndoint);
 
-        for (uint256 i; i < jobs.length; i++) {
-            emit SubId(jobs[i].subnetId);
-            emit SubData(jobs[i].subnetData);
+        bytes[] memory jobsResults = new bytes[](subnetIds.length);
 
-            jobsResults[i] = subnetAddr_[jobs[i].subnetId].execute(jobs[i].subnetData);
+        for (uint256 i; i < subnetIds.length; i++) {
+            emit SubId(subnetIds[i]);
+            emit SubData(subnetDatas[i]);
+
+            jobsResults[i] = subnetAddr_[subnetIds[i]].execute(subnetDatas[i]);
         }
 
-        return abi.encodeWithSelector(this.postJobResult.selector, _getLatestBlockNumber(rpcEndoint));
+        uint256 signingKey = uint256(
+            bytes32(
+                Suave.confidentialRetrieve(signingKeyRecord, SIGNING_KEY_NAMESPACE)
+            )
+        );
+
+        // // create tx to sign with private key
+        // bytes memory targetCall = abi.encodeWithSignature(
+        //     "babeCallback(uint256[],bytes[],bytes[])",
+        //     subnetIds,
+        //     subnetDatas,
+        //     jobsResults
+        // );
+
+        // // create transaction
+        // Transactions.EIP155Request memory txn = Transactions.EIP155Request({
+        //     to: _suaveCallerOnBase,
+        //     value: 0,
+        //     nonce: keyNonce,
+        //     data: targetCall,
+        //     chainId: chainId
+        // });
+
+
+        return abi.encodeWithSelector(this.postJobResult.selector, _getLatestBlockNumber(rpcEndoint), jobsResults);
     }
 
     function bytesToString(bytes memory data) internal pure returns (string memory) {
@@ -78,11 +119,15 @@ contract Babe is Suapp, SubnetRegistry {
         return string(chars);
     }
 
-    function postJobResult(uint256 _currentBaseBlockNum) external emitOffchainLogs {
+    function postJobResult(uint256 _currentBaseBlockNum, bytes[] calldata _results) external emitOffchainLogs {
+        for(uint i = 0; i < _results.length; i++) {
+            emit Result(abi.decode(_results[i], (string)));
+        }
+
         emit BlockN(_currentBaseBlockNum);
     }
 
-    function _getBabeJobs(string memory _rpcEndpoint) internal returns (BabeJob[] memory) {
+    function _getBabeJobs(string memory _rpcEndpoint) internal returns (uint256[] memory, bytes[] memory) {
         string memory blockInHex = LibString.toMinimalHexString(lastMonitoredBlock);
         string memory body = string.concat("{");
         body = string.concat(body, '"id": "1", ');
@@ -99,17 +144,18 @@ contract Babe is Suapp, SubnetRegistry {
 
         JSONParserLib.Item memory result = _doRequest(_rpcEndpoint, body);
         uint256 jobsCounter = result.size();
-        BabeJob[] memory jobs = new BabeJob[](jobsCounter);
+        uint256[] memory subnetIds = new uint256[](jobsCounter);
+        bytes[] memory subnetDatas = new bytes[](jobsCounter);
 
         for (uint256 i; i < jobsCounter; i++) {
-            jobs[i].subnetId = abi.decode(
+            subnetIds[i] = abi.decode(
                 HexStrings.fromHexString(_stripQuotesAndPrefix(result.at(i).at('"topics"').at(1).value())), (uint256)
             );
-            jobs[i].subnetData =
+            subnetDatas[i] =
                 abi.decode(HexStrings.fromHexString(_stripQuotesAndPrefix(result.at(i).at('"data"').value())), (bytes));
         }
 
-        return jobs;
+        return (subnetIds, subnetDatas);
     }
 
     function _doRequest(string memory _endpoint, string memory body) internal returns (JSONParserLib.Item memory) {
@@ -134,7 +180,7 @@ contract Babe is Suapp, SubnetRegistry {
         return JSONParserLib.parseUintFromHex(_stripQuotesAndPrefix(result.value()));
     }
 
-    function trimQuotess(string memory input) private pure returns (string memory) {
+    function _trimQuotes(string memory input) private pure returns (string memory) {
         bytes memory inputBytes = bytes(input);
         require(
             inputBytes.length >= 2 && inputBytes[0] == '"' && inputBytes[inputBytes.length - 1] == '"', "Invalid input"

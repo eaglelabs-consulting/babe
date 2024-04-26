@@ -17,9 +17,6 @@ contract ChatGPTSubnet is Suapp, Subnet {
 
     Suave.DataId apiKeyRecord;
 
-    event ChatgptPrompt(uint256 role, string content);
-    event Response(string messages);
-
     function updateKeyOnchain(Suave.DataId _apiKeyRecord) public {
         apiKeyRecord = _apiKeyRecord;
     }
@@ -43,19 +40,17 @@ contract ChatGPTSubnet is Suapp, Subnet {
 
         (uint256 role, string memory con) = abi.decode(_subnetData, (uint256, string));
 
-        emit ChatgptPrompt(role, con);
-
         ChatGPT.Message[] memory messages = new ChatGPT.Message[](1);
         messages[0] = role == 0 ? ChatGPT.Message(ChatGPT.Role.User, con) : ChatGPT.Message(ChatGPT.Role.System, con);
 
         string memory data = chatgpt.complete(messages);
 
-        emit Response(data);
+        // return abi.encodeWithSelector(this.onchain.selector);
 
-        return abi.encodeWithSelector(this.onchain.selector);
+        return abi.encode(data);
     }
 
-    function onchain() public emitOffchainLogs {}
+    // function onchain() public emitOffchainLogs {}
 
     function bytesToString(bytes memory data) private pure returns (string memory) {
         uint256 length = data.length;

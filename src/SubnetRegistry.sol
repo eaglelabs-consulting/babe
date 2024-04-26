@@ -8,7 +8,7 @@ contract SubnetRegistry {
     mapping(uint256 => ISubnet) internal subnetAddr_;
 
     // to remove
-    address private chatgptsubnet = 0x43799f8287Fd7e46a47AE4ac46bFD0de23Dc038C;
+    address private chatgptsubnet = 0xbe81147417cc8f3bff4738897b2F9b3fF90A63b7;
 
     constructor() {
         subnetAddr_[0] = ISubnet(chatgptsubnet);
