@@ -17,8 +17,10 @@ contract Babe is Suapp, SubnetRegistry {
 
     string internal constant SIGNING_KEY_NAMESPACE = "signing_key:v0:secret";
     string internal constant RPC_NAMESPACE = "rpc:v0:secret";
+    
+    address internal constant SIGNING_ADDRESS = 0x52BE7E4ea7374C573bE31e67ebA89C62648c3BEE;
 
-    address private constant _suaveCallerOnBase = 0x89EAA8f4fcf1a6b986E5B2beDb40b01Ab9Ce395a;
+    address private constant _suaveCallerOnBase = 0x336B884a3fDfE45861fF83Ccc0cdae76e967a07a;
 
     Suave.DataId internal signingKeyRecord;
     mapping(uint256 => Suave.DataId) internal rpcEndpointRecord;
@@ -30,11 +32,17 @@ contract Babe is Suapp, SubnetRegistry {
     event SubId(uint256 id);
     event SubData(bytes d);
     event Result(string s);
+    event res(string s);
+    event SignedTx(bytes tx);
 
     event kd(bytes kd);
     event kds(string s);
 
-    function registerEndpointOffchain(uint256 _chainId) external returns (bytes memory) {
+    constructor() {
+        _initializeOwner(msg.sender);
+    }
+
+    function registerEndpointOffchain(uint256 _chainId) external onlyOwner() returns (bytes memory) {
         bytes memory keyData = Context.confidentialInputs();
         address[] memory peekers = new address[](1);
         peekers[0] = address(this);
@@ -49,7 +57,7 @@ contract Babe is Suapp, SubnetRegistry {
         rpcEndpointRecord[_chainId] = _rpcEndpointRecord;
     }
 
-    function registerSigningKey() external returns (bytes memory) {
+    function registerSigningKey() external returns (bytes memory) onlyOwner() {
         bytes memory keyData = Context.confidentialInputs();
         address[] memory peekers = new address[](1);
         peekers[0] = address(this);
@@ -64,7 +72,7 @@ contract Babe is Suapp, SubnetRegistry {
         signingKeyRecord = _signingKeyRecord;
     }
 
-    function monitorBabeCalls(uint256 _chainId) external returns (bytes memory) {
+    function monitorBabeCalls(uint256 _chainId, uint256 _gas, uint256 _gasPrice) external onlyOwner() returns (bytes memory) {
         string memory rpcEndoint = bytesToString(Suave.confidentialRetrieve(rpcEndpointRecord[_chainId], RPC_NAMESPACE));
         emit kds(rpcEndoint);
 
@@ -87,25 +95,89 @@ contract Babe is Suapp, SubnetRegistry {
             )
         );
 
-        // // create tx to sign with private key
-        // bytes memory targetCall = abi.encodeWithSignature(
-        //     "babeCallback(uint256[],bytes[],bytes[])",
-        //     subnetIds,
-        //     subnetDatas,
-        //     jobsResults
-        // );
+        // create tx to sign with private key
+        bytes memory targetCall = abi.encodeWithSignature(
+            "babeCallback(uint256[],bytes[],bytes[])",
+            subnetIds,
+            subnetDatas,
+            jobsResults
+        );
 
-        // // create transaction
-        // Transactions.EIP155Request memory txn = Transactions.EIP155Request({
-        //     to: _suaveCallerOnBase,
-        //     value: 0,
-        //     nonce: keyNonce,
-        //     data: targetCall,
-        //     chainId: chainId
-        // });
+        // create transaction
+        Transactions.EIP155Request memory txn = Transactions.EIP155Request({
+            to: _suaveCallerOnBase,
+            gas: _gas,
+            gasPrice: _gasPrice,
+            value: 0,
+            nonce: _nonce(rpcEndoint, SIGNING_ADDRESS),
+            data: targetCall,
+            chainId: _chainId
+        });
+
+        // encode transaction
+        bytes memory rlpTxn = Transactions.encodeRLP(txn);
+
+        // sign transaction with key
+        bytes memory signedTxn = Suave.signEthTransaction(
+            rlpTxn,
+            LibString.toMinimalHexString(_chainId),
+            LibString.toHexStringNoPrefix(signingKey)
+        );
+
+        // send transaction over http json to stored enpoint
+        Suave.HttpRequest memory httpRequest = encodeEthSendRawTransaction(
+            signedTxn,
+            rpcEndoint
+        );
+        bytes memory output = Suave.doHTTPRequest(httpRequest);
+        JSONParserLib.Item memory item = string(output).parse();
+        JSONParserLib.Item memory result = item.at('"result"');
+
+        emit SignedTx(signedTxn);
+
+        emit res(result.value());
 
 
         return abi.encodeWithSelector(this.postJobResult.selector, _getLatestBlockNumber(rpcEndoint), jobsResults);
+    }
+
+    /**
+     * @dev Encodes the Ethereum transaction for sending via HTTP request
+     * @param signedTxn The signed transaction bytes
+     * @param url The URL to send the transaction to
+     * @return Suave.HttpRequest Struct containing HTTP request information
+     */
+    function encodeEthSendRawTransaction(
+        bytes memory signedTxn,
+        string memory url
+    ) internal pure returns (Suave.HttpRequest memory) {
+        bytes memory body = abi.encodePacked(
+            '{"jsonrpc":"2.0","method":"eth_sendRawTransaction","params":["',
+            LibString.toHexString(signedTxn),
+            '"],"id":1}'
+        );
+
+        Suave.HttpRequest memory request;
+        request.method = "POST";
+        request.body = body;
+        request.headers = new string[](1);
+        request.headers[0] = "Content-Type: application/json";
+        request.withFlashbotsSignature = false;
+        request.url = url;
+
+        return request;
+    }
+
+    function _nonce(string memory _rpcEndpoint, address addr) public returns (uint256) {
+        bytes memory body = abi.encodePacked(
+            '{"jsonrpc":"2.0","method":"eth_getTransactionCount","params":["',
+            LibString.toHexStringChecksummed(addr),
+            '","latest"],"id":1}'
+        );
+
+        JSONParserLib.Item memory item = _doRequest(_rpcEndpoint, string(body));
+        uint256 val = JSONParserLib.parseUintFromHex(_trimQuotes(item.value()));
+        return val;
     }
 
     function bytesToString(bytes memory data) internal pure returns (string memory) {
@@ -123,6 +195,8 @@ contract Babe is Suapp, SubnetRegistry {
         for(uint i = 0; i < _results.length; i++) {
             emit Result(abi.decode(_results[i], (string)));
         }
+
+        // lastMonitoredBlock = _currentBaseBlockNum;
 
         emit BlockN(_currentBaseBlockNum);
     }

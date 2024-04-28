@@ -3,18 +3,20 @@ pragma solidity ^0.8.13;
 
 // interfaces
 import {ISubnet} from "./interface/ISubnet.sol";
+// contracts
+import {Ownable} from "solady-pkg/auth/Ownable.sol";
 
-contract SubnetRegistry {
+contract SubnetRegistry is Ownable {
     mapping(uint256 => ISubnet) internal subnetAddr_;
 
     // to remove
-    address private chatgptsubnet = 0xbe81147417cc8f3bff4738897b2F9b3fF90A63b7;
+    address private chatgptsubnet = 0xcb632cC0F166712f09107a7587485f980e524fF6;
 
     constructor() {
         subnetAddr_[0] = ISubnet(chatgptsubnet);
     }
 
-    function setSubnetAddr(uint256 _id, address _addr) external {
+    function setSubnetAddr(uint256 _id, address _addr) external onlyOwner() {
         subnetAddr_[_id] = ISubnet(_addr);
     }
 
