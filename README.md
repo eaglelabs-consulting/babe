@@ -2,6 +2,10 @@
 
 https://collective.flashbots.net/t/request-for-suapp-coprocessor-for-base/3277
 
+- Rigil:
+
+ChatGPTSubnet: 0x62a1Bb69d27CC8Ac8ca099c691C27E29c9b54753
+
 **Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
 
 Foundry consists of:

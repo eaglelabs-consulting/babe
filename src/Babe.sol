@@ -57,7 +57,7 @@ contract Babe is Suapp, SubnetRegistry {
         rpcEndpointRecord[_chainId] = _rpcEndpointRecord;
     }
 
-    function registerSigningKey() external returns (bytes memory) onlyOwner() {
+    function registerSigningKey() external onlyOwner() returns (bytes memory) {
         bytes memory keyData = Context.confidentialInputs();
         address[] memory peekers = new address[](1);
         peekers[0] = address(this);

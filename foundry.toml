@@ -8,9 +8,10 @@ whitelist = ["*"]
 
 [rpc_endpoints]
 base_sepolia = "${RPC_BASE_SEPOLIA}"
-suave = "${RPC_SUAVE}"
+suave = "${RPC_SUAVE_LOCAL}"
 
 [etherscan]
 base_sepolia = { key = "${BASESCAN_KEY}", url = "https://api-sepolia.basescan.org/api", chain = 84532 }
+
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
