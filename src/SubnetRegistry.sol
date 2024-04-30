@@ -9,14 +9,7 @@ import {Ownable} from "solady-pkg/auth/Ownable.sol";
 contract SubnetRegistry is Ownable {
     mapping(uint256 => ISubnet) internal subnetAddr_;
 
-    // to remove
-    address private chatgptsubnet = 0xcb632cC0F166712f09107a7587485f980e524fF6;
-
-    constructor() {
-        subnetAddr_[0] = ISubnet(chatgptsubnet);
-    }
-
-    function setSubnetAddr(uint256 _id, address _addr) external onlyOwner() {
+    function setSubnetAddr(uint256 _id, address _addr) external onlyOwner {
         subnetAddr_[_id] = ISubnet(_addr);
     }
 

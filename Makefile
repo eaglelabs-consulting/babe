@@ -1,4 +1,4 @@
-include .env
+include .env.local
 
 local_run-suave:
 	suave-geth --suave.dev --suave.eth.external-whitelist='*' --ipcpath /tmp/geth.ipc

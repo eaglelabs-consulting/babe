@@ -14,12 +14,14 @@ contract SuaveCaller {
         emit Baaabe(_subnetId, _subnetData);
     }
 
-    function babeCallback(uint256[] calldata _subnetId, bytes[] calldata _subnetData, bytes[] calldata _results) external {
-        if(_subnetId.length != _subnetData.length || _subnetData.length != _results.length) {
+    function babeCallback(uint256[] calldata _subnetId, bytes[] calldata _subnetData, bytes[] calldata _results)
+        external
+    {
+        if (_subnetId.length != _subnetData.length || _subnetData.length != _results.length) {
             revert InvalidBabeOutput();
         }
 
-        for(uint256 i; i < _subnetId.length; i++) {
+        for (uint256 i; i < _subnetId.length; i++) {
             babeResults[_subnetId[i]][_subnetData[i]] = _results[i];
         }
     }

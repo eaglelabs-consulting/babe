@@ -4,7 +4,9 @@ https://collective.flashbots.net/t/request-for-suapp-coprocessor-for-base/3277
 
 - Rigil:
 
-ChatGPTSubnet: 0x62a1Bb69d27CC8Ac8ca099c691C27E29c9b54753
+ChatGPTSubnet: [0x1A232Baee8b1066e4e55eA28a0a162443FbF18fB](https://explorer.rigil.suave.flashbots.net/address/0x1A232Baee8b1066e4e55eA28a0a162443FbF18fB)
+
+Babe: [0x1AB00a4ef2d72D8F25F629dC2B864e8c1580d3B1](https://explorer.rigil.suave.flashbots.net/address/0x1AB00a4ef2d72D8F25F629dC2B864e8c1580d3B1)
 
 **Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
 

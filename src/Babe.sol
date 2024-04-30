@@ -17,7 +17,7 @@ contract Babe is Suapp, SubnetRegistry {
 
     string internal constant SIGNING_KEY_NAMESPACE = "signing_key:v0:secret";
     string internal constant RPC_NAMESPACE = "rpc:v0:secret";
-    
+
     address internal constant SIGNING_ADDRESS = 0x52BE7E4ea7374C573bE31e67ebA89C62648c3BEE;
 
     address private constant _suaveCallerOnBase = 0x336B884a3fDfE45861fF83Ccc0cdae76e967a07a;
@@ -42,7 +42,7 @@ contract Babe is Suapp, SubnetRegistry {
         _initializeOwner(msg.sender);
     }
 
-    function registerEndpointOffchain(uint256 _chainId) external onlyOwner() returns (bytes memory) {
+    function registerEndpointOffchain(uint256 _chainId) external onlyOwner returns (bytes memory) {
         bytes memory keyData = Context.confidentialInputs();
         address[] memory peekers = new address[](1);
         peekers[0] = address(this);
@@ -57,7 +57,7 @@ contract Babe is Suapp, SubnetRegistry {
         rpcEndpointRecord[_chainId] = _rpcEndpointRecord;
     }
 
-    function registerSigningKey() external onlyOwner() returns (bytes memory) {
+    function registerSigningKey() external onlyOwner returns (bytes memory) {
         bytes memory keyData = Context.confidentialInputs();
         address[] memory peekers = new address[](1);
         peekers[0] = address(this);
@@ -72,7 +72,11 @@ contract Babe is Suapp, SubnetRegistry {
         signingKeyRecord = _signingKeyRecord;
     }
 
-    function monitorBabeCalls(uint256 _chainId, uint256 _gas, uint256 _gasPrice) external onlyOwner() returns (bytes memory) {
+    function monitorBabeCalls(uint256 _chainId, uint256 _gas, uint256 _gasPrice)
+        external
+        onlyOwner
+        returns (bytes memory)
+    {
         string memory rpcEndoint = bytesToString(Suave.confidentialRetrieve(rpcEndpointRecord[_chainId], RPC_NAMESPACE));
         emit kds(rpcEndoint);
 
@@ -86,59 +90,72 @@ contract Babe is Suapp, SubnetRegistry {
             emit SubId(subnetIds[i]);
             emit SubData(subnetDatas[i]);
 
-            jobsResults[i] = subnetAddr_[subnetIds[i]].execute(subnetDatas[i]);
+            // jobsResults[i] = subnetAddr_[subnetIds[i]].execute(subnetDatas[i]);
+
+            (bool ok, bytes memory result) =
+                address(subnetAddr_[subnetIds[i]]).staticcall(abi.encodeWithSignature("execute(bytes)", subnetDatas[i]));
+            require(ok);
+
+            jobsResults[i] = abi.decode(result, (bytes));
         }
 
-        uint256 signingKey = uint256(
-            bytes32(
-                Suave.confidentialRetrieve(signingKeyRecord, SIGNING_KEY_NAMESPACE)
-            )
-        );
+        // uint256 signingKey = uint256(
+        //     bytes32(
+        //         Suave.confidentialRetrieve(signingKeyRecord, SIGNING_KEY_NAMESPACE)
+        //     )
+        // );
 
-        // create tx to sign with private key
-        bytes memory targetCall = abi.encodeWithSignature(
-            "babeCallback(uint256[],bytes[],bytes[])",
-            subnetIds,
-            subnetDatas,
-            jobsResults
-        );
+        // // create tx to sign with private key
+        // bytes memory targetCall = abi.encodeWithSignature(
+        //     "babeCallback(uint256[],bytes[],bytes[])",
+        //     subnetIds,
+        //     subnetDatas,
+        //     jobsResults
+        // );
 
-        // create transaction
-        Transactions.EIP155Request memory txn = Transactions.EIP155Request({
-            to: _suaveCallerOnBase,
-            gas: _gas,
-            gasPrice: _gasPrice,
-            value: 0,
-            nonce: _nonce(rpcEndoint, SIGNING_ADDRESS),
-            data: targetCall,
-            chainId: _chainId
-        });
+        // // create transaction
+        // Transactions.EIP155Request memory txn = Transactions.EIP155Request({
+        //     to: _suaveCallerOnBase,
+        //     gas: _gas,
+        //     gasPrice: _gasPrice,
+        //     value: 0,
+        //     nonce: _nonce(rpcEndoint, SIGNING_ADDRESS),
+        //     data: targetCall,
+        //     chainId: _chainId
+        // });
 
-        // encode transaction
-        bytes memory rlpTxn = Transactions.encodeRLP(txn);
+        // // encode transaction
+        // bytes memory rlpTxn = Transactions.encodeRLP(txn);
 
-        // sign transaction with key
-        bytes memory signedTxn = Suave.signEthTransaction(
-            rlpTxn,
-            LibString.toMinimalHexString(_chainId),
-            LibString.toHexStringNoPrefix(signingKey)
-        );
+        // // sign transaction with key
+        // bytes memory signedTxn = Suave.signEthTransaction(
+        //     rlpTxn,
+        //     LibString.toMinimalHexString(_chainId),
+        //     LibString.toHexStringNoPrefix(signingKey)
+        // );
 
-        // send transaction over http json to stored enpoint
-        Suave.HttpRequest memory httpRequest = encodeEthSendRawTransaction(
-            signedTxn,
-            rpcEndoint
-        );
-        bytes memory output = Suave.doHTTPRequest(httpRequest);
-        JSONParserLib.Item memory item = string(output).parse();
-        JSONParserLib.Item memory result = item.at('"result"');
+        // string memory id = Suave.newBuilder();
 
-        emit SignedTx(signedTxn);
+        // Suave.SimulateTransactionResult memory sim1 = Suave.simulateTransaction(id, rlpTxn);
+        // require(sim1.success == true);
+        // require(sim1.logs.length == 1);
 
-        emit res(result.value());
+        // // send transaction over http json to stored enpoint
+        // Suave.HttpRequest memory httpRequest = encodeEthSendRawTransaction(
+        //     signedTxn,
+        //     rpcEndoint
+        // );
+        // bytes memory output = Suave.doHTTPRequest(httpRequest);
+        // JSONParserLib.Item memory item = string(output).parse();
+        // JSONParserLib.Item memory result = item.at('"result"');
 
+        // emit SignedTx(signedTxn);
 
-        return abi.encodeWithSelector(this.postJobResult.selector, _getLatestBlockNumber(rpcEndoint), jobsResults);
+        // emit res(result.value());
+
+        // return abi.encodeWithSelector(this.postJobResult.selector, _getLatestBlockNumber(rpcEndoint), jobsResults);
+
+        return abi.encodeWithSelector(this.postJobResult.selector, 0, jobsResults);
     }
 
     /**
@@ -147,10 +164,11 @@ contract Babe is Suapp, SubnetRegistry {
      * @param url The URL to send the transaction to
      * @return Suave.HttpRequest Struct containing HTTP request information
      */
-    function encodeEthSendRawTransaction(
-        bytes memory signedTxn,
-        string memory url
-    ) internal pure returns (Suave.HttpRequest memory) {
+    function encodeEthSendRawTransaction(bytes memory signedTxn, string memory url)
+        internal
+        pure
+        returns (Suave.HttpRequest memory)
+    {
         bytes memory body = abi.encodePacked(
             '{"jsonrpc":"2.0","method":"eth_sendRawTransaction","params":["',
             LibString.toHexString(signedTxn),
@@ -184,7 +202,7 @@ contract Babe is Suapp, SubnetRegistry {
         uint256 length = data.length;
         bytes memory chars = new bytes(length);
 
-        for(uint i = 0; i < length; i++) {
+        for (uint256 i = 0; i < length; i++) {
             chars[i] = data[i];
         }
 
@@ -192,11 +210,9 @@ contract Babe is Suapp, SubnetRegistry {
     }
 
     function postJobResult(uint256 _currentBaseBlockNum, bytes[] calldata _results) external emitOffchainLogs {
-        for(uint i = 0; i < _results.length; i++) {
-            emit Result(abi.decode(_results[i], (string)));
-        }
-
-        // lastMonitoredBlock = _currentBaseBlockNum;
+        // for(uint i = 0; i < _results.length; i++) {
+        //     emit Result(abi.decode(_results[i], (string)));
+        // }
 
         emit BlockN(_currentBaseBlockNum);
     }

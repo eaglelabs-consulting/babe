@@ -45,12 +45,8 @@ contract ChatGPTSubnet is Suapp, Subnet {
 
         string memory data = chatgpt.complete(messages);
 
-        // return abi.encodeWithSelector(this.onchain.selector);
-
         return abi.encode(data);
     }
-
-    // function onchain() public emitOffchainLogs {}
 
     function bytesToString(bytes memory data) private pure returns (string memory) {
         uint256 length = data.length;
