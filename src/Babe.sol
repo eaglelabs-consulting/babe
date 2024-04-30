@@ -12,6 +12,8 @@ import {Suave} from "suave-std/suavelib/Suave.sol";
 import {Context} from "suave-std/Context.sol";
 import {Transactions} from "suave-std/Transactions.sol";
 
+import {Bundle} from "./utils/Bundle.sol";
+
 contract Babe is Suapp, SubnetRegistry {
     using JSONParserLib for *;
 
@@ -37,6 +39,12 @@ contract Babe is Suapp, SubnetRegistry {
 
     event kd(bytes kd);
     event kds(string s);
+
+    struct Block {
+        uint256 number;
+        uint256 timestamp;
+        uint256 baseFeePerGas;
+    }
 
     constructor() {
         _initializeOwner(msg.sender);
@@ -90,57 +98,54 @@ contract Babe is Suapp, SubnetRegistry {
             emit SubId(subnetIds[i]);
             emit SubData(subnetDatas[i]);
 
-            // jobsResults[i] = subnetAddr_[subnetIds[i]].execute(subnetDatas[i]);
-
-            (bool ok, bytes memory result) =
-                address(subnetAddr_[subnetIds[i]]).staticcall(abi.encodeWithSignature("execute(bytes)", subnetDatas[i]));
-            require(ok);
-
-            jobsResults[i] = abi.decode(result, (bytes));
+            jobsResults[i] = subnetAddr_[subnetIds[i]].execute(subnetDatas[i]);
         }
 
-        // uint256 signingKey = uint256(
-        //     bytes32(
-        //         Suave.confidentialRetrieve(signingKeyRecord, SIGNING_KEY_NAMESPACE)
-        //     )
-        // );
+        uint256 signingKey = uint256(
+            bytes32(
+                Suave.confidentialRetrieve(signingKeyRecord, SIGNING_KEY_NAMESPACE)
+            )
+        );
 
-        // // create tx to sign with private key
-        // bytes memory targetCall = abi.encodeWithSignature(
-        //     "babeCallback(uint256[],bytes[],bytes[])",
-        //     subnetIds,
-        //     subnetDatas,
-        //     jobsResults
-        // );
+        // create tx to sign with private key
+        bytes memory targetCall = abi.encodeWithSignature(
+            "babeCallback(uint256[],bytes[],bytes[])",
+            subnetIds,
+            subnetDatas,
+            jobsResults
+        );
 
-        // // create transaction
-        // Transactions.EIP155Request memory txn = Transactions.EIP155Request({
-        //     to: _suaveCallerOnBase,
-        //     gas: _gas,
-        //     gasPrice: _gasPrice,
-        //     value: 0,
-        //     nonce: _nonce(rpcEndoint, SIGNING_ADDRESS),
-        //     data: targetCall,
-        //     chainId: _chainId
-        // });
+        // create transaction
+        Transactions.EIP155Request memory txn = Transactions.EIP155Request({
+            to: _suaveCallerOnBase,
+            gas: _gas,
+            gasPrice: _gasPrice,
+            value: 0,
+            nonce: _nonce(rpcEndoint, SIGNING_ADDRESS),
+            data: targetCall,
+            chainId: _chainId
+        });
 
-        // // encode transaction
-        // bytes memory rlpTxn = Transactions.encodeRLP(txn);
+        // encode transaction
+        bytes memory rlpTxn = Transactions.encodeRLP(txn);
 
-        // // sign transaction with key
-        // bytes memory signedTxn = Suave.signEthTransaction(
-        //     rlpTxn,
-        //     LibString.toMinimalHexString(_chainId),
-        //     LibString.toHexStringNoPrefix(signingKey)
-        // );
+        // sign transaction with key
+        bytes memory signedTxn = Suave.signEthTransaction(
+            rlpTxn,
+            LibString.toMinimalHexString(_chainId),
+            LibString.toHexStringNoPrefix(signingKey)
+        );
+
+
 
         // string memory id = Suave.newBuilder();
-
         // Suave.SimulateTransactionResult memory sim1 = Suave.simulateTransaction(id, rlpTxn);
         // require(sim1.success == true);
         // require(sim1.logs.length == 1);
 
-        // // send transaction over http json to stored enpoint
+
+
+        // send transaction over http json to stored enpoint
         // Suave.HttpRequest memory httpRequest = encodeEthSendRawTransaction(
         //     signedTxn,
         //     rpcEndoint
@@ -150,12 +155,65 @@ contract Babe is Suapp, SubnetRegistry {
         // JSONParserLib.Item memory result = item.at('"result"');
 
         // emit SignedTx(signedTxn);
-
         // emit res(result.value());
 
-        // return abi.encodeWithSelector(this.postJobResult.selector, _getLatestBlockNumber(rpcEndoint), jobsResults);
+        uint256 blockNumber = _getLatestBlockNumber(rpcEndoint);
+        Block memory baseBlock = getLastL1Block(rpcEndoint, blockNumber);
 
-        return abi.encodeWithSelector(this.postJobResult.selector, 0, jobsResults);
+        // construct bundle
+        Bundle.BundleObj memory bundle;
+        bundle.blockNumber = uint64(baseBlock.number + 1);
+        bundle.minTimestamp = 0;
+        bundle.maxTimestamp = 0;
+        bundle.txns = new bytes[](1);
+
+        // add post transaction to bundle
+        bundle.txns[0] = signedTxn;
+
+        // send bundle to flashbots
+        bytes memory bundleRes = Bundle.sendBundle(
+            "https://relay-holesky.flashbots.net",
+            bundle
+        );
+        // // send to titan too
+        // Bundle.sendBundle("http://holesky-rpc.titanbuilder.xyz/", bundle);
+
+        return abi.encodeWithSelector(this.postJobResult.selector, _getLatestBlockNumber(rpcEndoint), jobsResults);
+    }
+
+    function getLastL1Block(
+        string memory _rpcEndpoint,
+        uint256 blockNumber
+    ) internal returns (Block memory blockData) {
+        string memory blockNumberInHex = LibString.toMinimalHexString(blockNumber);
+
+        bytes memory body = abi.encodePacked(
+            '{"method":"eth_getBlockByNumber","params":["',
+            blockNumberInHex,
+            '",false],"id":1,"jsonrpc":"2.0"}'
+        );
+
+        Suave.HttpRequest memory request;
+        request.method = "POST";
+        request.body = body;
+        request.headers = new string[](1);
+        request.headers[0] = "Content-Type: application/json";
+        request.withFlashbotsSignature = false;
+        request.url = _rpcEndpoint;
+
+        /// returns: https://docs.chainstack.com/reference/ethereum-getblockbynumber
+        bytes memory result = Suave.doHTTPRequest(request);
+
+        JSONParserLib.Item memory outerItem = string(result).parse();
+        JSONParserLib.Item memory item = outerItem.at('"result"');
+
+        blockData.baseFeePerGas = JSONParserLib.parseUintFromHex(
+            _trimQuotes(string(item.at('"baseFeePerGas"').value()))
+        );
+        blockData.timestamp = JSONParserLib.parseUintFromHex(
+            _trimQuotes(string(item.at('"timestamp"').value()))
+        );
+        blockData.number = blockNumber;
     }
 
     /**
